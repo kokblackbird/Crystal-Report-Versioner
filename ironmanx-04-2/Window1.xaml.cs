@@ -3,10 +3,13 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Interop;
 using Microsoft.Win32;
 
 namespace ironmanx_04_2
@@ -31,7 +34,7 @@ namespace ironmanx_04_2
  {
  var url = "https://origin.softwaredownloads.sap.com/public/site/index.html";
  var msg = "SAP Crystal Reports .NET runtime was not detected. Advanced Crystal-level analysis will be disabled.\n\n" +
- "You can install the SAP Crystal Reports runtime (CRuntime_64bit_13_0_xx).\n\n" +
+ "You can install the SAP Crystal Reports runtime (CRRuntime_64bit_13_0_xx).\n\n" +
  "Open the official SAP download page now?";
  var result = MessageBox.Show(this, msg, "Crystal Reports runtime not detected", MessageBoxButton.YesNo, MessageBoxImage.Information);
  if (result == MessageBoxResult.Yes)
@@ -62,6 +65,17 @@ namespace ironmanx_04_2
  if (dlg.ShowDialog(this).GetValueOrDefault())
  {
  OriginalPathText.Text = dlg.FileName;
+ // Auto-suggest archive root based on original report path
+ try
+ {
+ var baseDir = Path.GetDirectoryName(dlg.FileName);
+ if (!string.IsNullOrWhiteSpace(baseDir))
+ {
+ var defaultRoot = Path.Combine(baseDir, "archive");
+ ArchiveRootText.Text = defaultRoot;
+ }
+ }
+ catch { }
  }
  }
 
@@ -80,7 +94,11 @@ namespace ironmanx_04_2
 
  private void BrowseArchiveRoot_Click(object sender, RoutedEventArgs e)
  {
- MessageBox.Show(this, "Enter the archive root path manually in the text box.", "Select folder", MessageBoxButton.OK, MessageBoxImage.Information);
+ string picked;
+ if (FolderPicker.TryPickFolder(this, "Select archive root folder", out picked))
+ {
+ ArchiveRootText.Text = picked ?? string.Empty;
+ }
  }
 
  private async void ArchiveButton_Click(object sender, RoutedEventArgs e)
@@ -95,9 +113,17 @@ namespace ironmanx_04_2
 
  if (!File.Exists(originalPath)) { Warn("Original file not found."); return; }
  if (!File.Exists(changedPath)) { Warn("Changed file not found."); return; }
- if (string.IsNullOrWhiteSpace(archiveRoot)) { Warn("Archive root not set."); return; }
 
- var reportKey = Path.GetFileNameWithoutExtension(changedPath);
+ // Auto-derive archive root if empty
+ if (string.IsNullOrWhiteSpace(archiveRoot))
+ {
+ var baseDir = Path.GetDirectoryName(originalPath) ?? string.Empty;
+ archiveRoot = Path.Combine(baseDir, "archive");
+ ArchiveRootText.Text = archiveRoot;
+ }
+
+ // Report folder uses original report name
+ var reportKey = Path.GetFileNameWithoutExtension(originalPath);
  var reportRoot = Path.Combine(archiveRoot, SanitizePath(reportKey));
  Directory.CreateDirectory(reportRoot);
 
@@ -142,17 +168,54 @@ namespace ironmanx_04_2
  }
  }
 
- var readme = HtmlBuilder.BuildReadme(reportKey, message, originalCopy, changedCopy, basicHtml, crystalHtml);
- var readmePath = Path.Combine(versionFolder, "readme.html");
- File.WriteAllText(readmePath, readme, Encoding.UTF8);
+ var changes = HtmlBuilder.BuildReadme(reportKey, message, originalCopy, changedCopy, basicHtml, crystalHtml);
+ var changesPath = Path.Combine(versionFolder, "changes.html");
+ File.WriteAllText(changesPath, changes, Encoding.UTF8);
 
  // metadata.json (simple hand-made JSON to avoid extra packages)
  var via = string.IsNullOrWhiteSpace(crystalHtml) ? "none" : (analyzerLog != null && analyzerLog.Count >0 ? "inproc" : "helper");
  var metaJson = BuildMetaJson(reportKey, message, basicDiff, originalCopy, changedCopy, via);
  File.WriteAllText(Path.Combine(versionFolder, "metadata.json"), metaJson, Encoding.UTF8);
 
+ // Compress version folder to zip to conserve space
+ var zipPath = Path.Combine(reportRoot, reportKey + "-" + stamp + ".zip");
+ string zipErr;
+ string artifactLink = null;
+ if (TryZipDirectory(versionFolder, zipPath, out zipErr))
+ {
+ Log("Created archive zip: " + zipPath);
+ artifactLink = Path.GetFileName(zipPath);
+ try
+ {
+ Directory.Delete(versionFolder, true);
+ Log("Removed uncompressed folder to save space.");
+ }
+ catch (Exception delEx)
+ {
+ Log("Warning: could not delete folder: " + delEx.Message);
+ }
+ _lastArchiveFolder = reportRoot; // zip lives under report root
+ }
+ else
+ {
+ Log("Zip failed: " + zipErr);
+ artifactLink = versionFolder; // fallback
  _lastArchiveFolder = versionFolder;
- Log("Archive created: " + versionFolder);
+ }
+
+ // Append to master changelog in report root
+ Changelog.AppendEntry(
+ reportRoot,
+ reportKey,
+ stamp,
+ message,
+ Path.GetFileName(originalCopy),
+ Path.GetFileName(changedCopy),
+ basicHtml,
+ crystalHtml,
+ artifactLink);
+
+ Log("Archive complete: " + (_lastArchiveFolder ?? versionFolder));
  }
  catch (Exception ex)
  {
@@ -239,6 +302,34 @@ namespace ironmanx_04_2
  sb.Append("}\n");
  return sb.ToString();
  }
+
+ private static bool TryZipDirectory(string sourceDirectory, string zipPath, out string error)
+ {
+ try
+ {
+ // Ensure target directory exists
+ var targetDir = Path.GetDirectoryName(zipPath);
+ if (!string.IsNullOrEmpty(targetDir)) Directory.CreateDirectory(targetDir);
+
+ // Load ZipFile from System.IO.Compression.FileSystem at runtime to avoid project reference changes
+ var asm = Assembly.Load("System.IO.Compression.FileSystem");
+ var zipType = asm.GetType("System.IO.Compression.ZipFile");
+ var mi = zipType.GetMethod("CreateFromDirectory", new Type[] { typeof(string), typeof(string) });
+ if (mi == null)
+ {
+ error = "ZipFile.CreateFromDirectory overload not found.";
+ return false;
+ }
+ mi.Invoke(null, new object[] { sourceDirectory, zipPath });
+ error = null;
+ return true;
+ }
+ catch (Exception ex)
+ {
+ error = ex.Message;
+ return false;
+ }
+ }
  }
 
  internal static class HtmlBuilder
@@ -251,7 +342,7 @@ namespace ironmanx_04_2
  var sb = new StringBuilder();
  sb.Append("<!DOCTYPE html><html><head><meta charset='utf-8'/><title>");
  sb.Append(E(reportKey));
- sb.Append(" - Version</title><style>body{font-family:Segoe UI,Arial,sans-serif;margin:24px;} h1,h2{font-weight:600} code,pre{background:#f6f8fa;padding:2px4px;border-radius:4px} .grid{display:grid;grid-template-columns:1fr1fr;gap:16px} .section{margin-top:24px} table{border-collapse:collapse} td,th{border:1px solid #ddd;padding:6px8px} .muted{color:#666}</style></head><body>");
+ sb.Append(" - Version</title><style>body{font-family:Segoe UI,Arial,sans-serif;margin:24px;} h1,h2{font-weight:600} code,pre{background:#0e1a21;color:#e6f9ff;padding:2px4px;border-radius:4px} .grid{display:grid;grid-template-columns:1fr1fr;gap:16px} .section{margin-top:24px} table{border-collapse:collapse} td,th{border:1px solid #1f3a46;padding:6px8px} .muted{color:#a5c7d1} body{background:#0d1b22;color:#e6f9ff}</style></head><body>");
  sb.Append("<h1>" + E(reportKey) + " - Version</h1>");
  if (!string.IsNullOrWhiteSpace(message))
  {
@@ -765,6 +856,175 @@ namespace ironmanx_04_2
  helperJson = null;
  error = "Helper not available.";
  return false;
+ }
+ }
+
+ internal static class FolderPicker
+ {
+ // Simple SHBrowseForFolder-based picker to avoid extra references
+ private const uint BIF_RETURNONLYFSDIRS =0x0001;
+ private const uint BIF_DONTGOBELOWDOMAIN =0x0002;
+ private const uint BIF_EDITBOX =0x0010;
+ private const uint BIF_NEWDIALOGSTYLE =0x0040;
+
+ [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+ private struct BROWSEINFO
+ {
+ public IntPtr hwndOwner;
+ public IntPtr pidlRoot;
+ public IntPtr pszDisplayName;
+ [MarshalAs(UnmanagedType.LPTStr)] public string lpszTitle;
+ public uint ulFlags;
+ public IntPtr lpfn;
+ public IntPtr lParam;
+ public int iImage;
+ }
+
+ [DllImport("shell32.dll", CharSet = CharSet.Auto)]
+ private static extern IntPtr SHBrowseForFolder(ref BROWSEINFO bi);
+
+ [DllImport("shell32.dll", CharSet = CharSet.Auto)]
+ private static extern bool SHGetPathFromIDList(IntPtr pidl, StringBuilder pszPath);
+
+ public static bool TryPickFolder(Window owner, string title, out string path)
+ {
+ path = null;
+ var buffer = new StringBuilder(260);
+ IntPtr pidl = IntPtr.Zero;
+ IntPtr displayNamePtr = IntPtr.Zero;
+ try
+ {
+ displayNamePtr = Marshal.AllocHGlobal(260 * Marshal.SystemDefaultCharSize);
+ var bi = new BROWSEINFO();
+ bi.hwndOwner = owner != null ? new WindowInteropHelper(owner).Handle : IntPtr.Zero;
+ bi.pidlRoot = IntPtr.Zero;
+ bi.pszDisplayName = displayNamePtr;
+ bi.lpszTitle = title ?? "Select folder";
+ bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_EDITBOX | BIF_NEWDIALOGSTYLE | BIF_DONTGOBELOWDOMAIN;
+ bi.lpfn = IntPtr.Zero;
+ bi.lParam = IntPtr.Zero;
+ bi.iImage =0;
+
+ pidl = SHBrowseForFolder(ref bi);
+ if (pidl == IntPtr.Zero) return false; // canceled
+ if (!SHGetPathFromIDList(pidl, buffer)) return false;
+ var s = buffer.ToString();
+ if (string.IsNullOrWhiteSpace(s)) return false;
+ path = s;
+ return true;
+ }
+ finally
+ {
+ if (pidl != IntPtr.Zero) Marshal.FreeCoTaskMem(pidl);
+ if (displayNamePtr != IntPtr.Zero) Marshal.FreeHGlobal(displayNamePtr);
+ }
+ }
+ }
+
+ internal static class Changelog
+ {
+ public static void AppendEntry(string reportRoot, string reportKey, string stamp, string message, string originalFileName, string changedFileName, string basicDiffHtml, string crystalHtml, string artifactLink)
+ {
+ try
+ {
+ var safeReport = Sanitize(reportKey);
+ var path = Path.Combine(reportRoot, "ChangeLog-" + safeReport + ".html");
+ var section = BuildSection(reportKey, stamp, message, originalFileName, changedFileName, basicDiffHtml, crystalHtml, artifactLink);
+ if (!File.Exists(path))
+ {
+ var html = BuildShell(reportKey, section);
+ File.WriteAllText(path, html, Encoding.UTF8);
+ return;
+ }
+
+ var existing = File.ReadAllText(path, Encoding.UTF8);
+ var endTag = "</body>";
+ var idx = existing.LastIndexOf(endTag, StringComparison.OrdinalIgnoreCase);
+ if (idx >=0)
+ {
+ var updated = existing.Substring(0, idx) + section + existing.Substring(idx);
+ File.WriteAllText(path, updated, Encoding.UTF8);
+ }
+ else
+ {
+ // No closing body, append everything
+ File.AppendAllText(path, section + "\n</body></html>", Encoding.UTF8);
+ }
+ }
+ catch
+ {
+ // swallow: changelog shouldn't block archiving
+ }
+ }
+
+ private static string BuildShell(string reportKey, string firstSection)
+ {
+ var sb = new StringBuilder();
+ sb.Append("<!DOCTYPE html><html><head><meta charset='utf-8'/><title>ChangeLog - ");
+ sb.Append(E(reportKey));
+ sb.Append("</title><style>body{font-family:Segoe UI,Arial,sans-serif;margin:24px;background:#0d1b22;color:#e6f9ff} h1,h2{font-weight:600} a{color:#7fdbff} code,pre{background:#0e1a21;color:#e6f9ff;padding:2px4px;border-radius:4px} .entry{border:1px solid #1f3a46;border-radius:6px;margin:16px0;padding:12px} .muted{color:#a5c7d1}</style></head><body>");
+ sb.Append("<h1>Change Log - ");
+ sb.Append(E(reportKey));
+ sb.Append("</h1>");
+ sb.Append(firstSection);
+ sb.Append("</body></html>");
+ return sb.ToString();
+ }
+
+ private static string BuildSection(string reportKey, string stamp, string message, string originalFileName, string changedFileName, string basicDiffHtml, string crystalHtml, string artifactLink)
+ {
+ var sb = new StringBuilder();
+ sb.Append("<div class='entry'>");
+ sb.Append("<h2>Version v");
+ sb.Append(E(stamp));
+ sb.Append("</h2>");
+ if (!string.IsNullOrWhiteSpace(message))
+ {
+ sb.Append("<p><strong>Message:</strong> ");
+ sb.Append(E(message));
+ sb.Append("</p>");
+ }
+ sb.Append("<p class='muted'>Created UTC: ");
+ sb.Append(E(DateTime.UtcNow.ToString("u")));
+ sb.Append("</p>");
+ sb.Append("<p>Original: <code>");
+ sb.Append(E(originalFileName));
+ sb.Append("</code> &nbsp; Changed: <code>");
+ sb.Append(E(changedFileName));
+ sb.Append("</code></p>");
+ if (!string.IsNullOrEmpty(artifactLink))
+ {
+ var linkText = Path.GetFileName(artifactLink);
+ sb.Append("<p>Package: <a href='");
+ sb.Append(E(linkText));
+ sb.Append("'>");
+ sb.Append(E(linkText));
+ sb.Append("</a></p>");
+ }
+ sb.Append("<div><h3>Binary diff</h3>");
+ sb.Append(basicDiffHtml ?? "");
+ sb.Append("</div>");
+ if (!string.IsNullOrWhiteSpace(crystalHtml))
+ {
+ sb.Append("<div><h3>Crystal analysis</h3>");
+ sb.Append(crystalHtml);
+ sb.Append("</div>");
+ }
+ sb.Append("</div>");
+ return sb.ToString();
+ }
+
+ private static string E(string s)
+ {
+ return System.Net.WebUtility.HtmlEncode(s ?? string.Empty);
+ }
+ private static string Sanitize(string input)
+ {
+ var invalid = Path.GetInvalidFileNameChars();
+ var sb = new StringBuilder(input.Length);
+ foreach (var ch in input)
+ sb.Append(invalid.Contains(ch) ? '_' : ch);
+ return sb.ToString();
  }
  }
 }
