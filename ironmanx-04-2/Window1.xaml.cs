@@ -215,6 +215,24 @@ namespace ironmanx_04_2
  crystalHtml,
  artifactLink);
 
+ // Replace original with changed now that archiving and logging are complete
+ try
+ {
+ if (!string.Equals(originalPath, changedPath, StringComparison.OrdinalIgnoreCase))
+ {
+ File.Copy(changedPath, originalPath, true);
+ Log("Replaced original report with changed report.");
+ }
+ else
+ {
+ Log("Original and changed paths are identical; replacement skipped.");
+ }
+ }
+ catch (Exception rex)
+ {
+ Log("Failed to replace original report: " + rex.Message);
+ }
+
  Log("Archive complete: " + (_lastArchiveFolder ?? versionFolder));
  }
  catch (Exception ex)
