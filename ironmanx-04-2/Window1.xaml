@@ -129,17 +129,17 @@
         <!-- Original file -->
         <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Original (.rpt):"/>
         <TextBox x:Name="OriginalPathText" Grid.Row="0" Grid.Column="1" Margin="0,0,8,8"/>
-        <Button Grid.Row="0" Grid.Column="2" Width="100" Margin="0,0,0,8" Content="Browse..." Click="BrowseOriginal_Click"/>
+        <Button Grid.Row="0" Grid.Column="2" Width="120" Margin="0,0,0,8" Content="Browse..." Click="BrowseOriginal_Click"/>
 
         <!-- Changed file -->
         <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Changed (.rpt):"/>
         <TextBox x:Name="ChangedPathText" Grid.Row="1" Grid.Column="1" Margin="0,0,8,8"/>
-        <Button Grid.Row="1" Grid.Column="2" Width="100" Margin="0,0,0,8" Content="Browse..." Click="BrowseChanged_Click"/>
+        <Button Grid.Row="1" Grid.Column="2" Width="120" Margin="0,0,0,8" Content="Browse..." Click="BrowseChanged_Click"/>
 
         <!-- Archive root -->
         <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Archive root:"/>
         <TextBox x:Name="ArchiveRootText" Grid.Row="2" Grid.Column="1" Margin="0,0,8,8"/>
-        <Button Grid.Row="2" Grid.Column="2" Width="100" Margin="0,0,0,8" Content="Browse..." Click="BrowseArchiveRoot_Click"/>
+        <Button Grid.Row="2" Grid.Column="2" Width="120" Margin="0,0,0,8" Content="Browse..." Click="BrowseArchiveRoot_Click"/>
 
         <!-- Message -->
         <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Top" Text="Message:"/>
@@ -154,6 +154,7 @@
 
         <!-- Actions -->
         <StackPanel Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="RevertButton" Width="160" Margin="0,0,8,0" Content="Revert to Last Change" Click="RevertButton_Click"/>
             <Button x:Name="ArchiveButton" Width="140" Margin="0,0,8,0" Content="Create Archive" Click="ArchiveButton_Click"/>
             <Button x:Name="OpenArchiveButton" Width="190" Content="Open Archive Folder" Click="OpenArchiveButton_Click"/>
         </StackPanel>

@@ -348,6 +348,113 @@ namespace ironmanx_04_2
  return false;
  }
  }
+ private void RevertButton_Click(object sender, RoutedEventArgs e)
+ {
+ try
+ {
+ var originalPath = (OriginalPathText.Text ?? string.Empty).Trim();
+ var archiveRoot = (ArchiveRootText.Text ?? string.Empty).Trim();
+ if (!File.Exists(originalPath)) { Warn("Original file not found."); return; }
+ if (string.IsNullOrWhiteSpace(archiveRoot))
+ {
+ var baseDir = Path.GetDirectoryName(originalPath) ?? string.Empty;
+ archiveRoot = Path.Combine(baseDir, "archive");
+ }
+
+ var reportKey = Path.GetFileNameWithoutExtension(originalPath);
+ var reportRoot = Path.Combine(archiveRoot, SanitizePath(reportKey));
+ if (!Directory.Exists(reportRoot)) { Warn("No archive found for this report."); return; }
+
+ // Find the latest version artifact (zip preferred)
+ var latest = FindLatestVersionArtifact(reportRoot);
+ if (string.IsNullOrEmpty(latest)) { Warn("No version artifacts found to revert."); return; }
+
+ string tempRestoreFolder = null;
+ string restoredOriginalPath = null;
+ try
+ {
+ if (latest.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+ {
+ tempRestoreFolder = Path.Combine(reportRoot, ".restore-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss"));
+ Directory.CreateDirectory(tempRestoreFolder);
+ string unzipErr;
+ if (!TryUnzip(latest, tempRestoreFolder, out unzipErr)) { Warn("Failed to unzip: " + unzipErr); return; }
+ restoredOriginalPath = Path.Combine(tempRestoreFolder, "original", Path.GetFileName(originalPath));
+ }
+ else
+ {
+ restoredOriginalPath = Path.Combine(latest, "original", Path.GetFileName(originalPath));
+ }
+
+ if (!File.Exists(restoredOriginalPath)) { Warn("Original file not found inside archive."); return; }
+
+ // Backup current and replace
+ try { File.Copy(originalPath, originalPath + ".bak", true); } catch { }
+ File.Copy(restoredOriginalPath, originalPath, true);
+ Log("Reverted to previous version.");
+
+ // Append a revert entry to changelog
+ var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+ var message = "Reverted to previous version";
+ var basicHtml = "<p class='muted'>Reversion operation. See previous entries for diff details.</p>";
+ Changelog.AppendEntry(reportRoot, reportKey, stamp, message, Path.GetFileName(originalPath), Path.GetFileName(originalPath), basicHtml, null, null);
+ }
+ finally
+ {
+ if (!string.IsNullOrEmpty(tempRestoreFolder))
+ {
+ try { Directory.Delete(tempRestoreFolder, true); } catch { }
+ }
+ }
+ }
+ catch (Exception ex)
+ {
+ Warn("Revert failed: " + ex.Message);
+ }
+ }
+
+ private static string FindLatestVersionArtifact(string reportRoot)
+ {
+ // Prefer zips, then folders. Sort by detected timestamp in name, fallback to last write.
+ var zips = Directory.GetFiles(reportRoot, "*.zip");
+ var folders = Directory.GetDirectories(reportRoot, "v*");
+ var candidates = new List<string>();
+ candidates.AddRange(zips);
+ candidates.AddRange(folders);
+ if (candidates.Count ==0) return null;
+
+ DateTime Score(string path)
+ {
+ var name = Path.GetFileName(path);
+ var withoutExt = Path.GetFileNameWithoutExtension(path);
+ string token = null;
+ if (name.StartsWith("v", StringComparison.OrdinalIgnoreCase)) token = name.Substring(1); // vyyyyMMdd-HHmmss
+ else
+ {
+ var dash = withoutExt.LastIndexOf('-');
+ if (dash >=0 && dash +1 < withoutExt.Length) token = withoutExt.Substring(dash +1);
+ }
+ if (DateTime.TryParseExact(token, "yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var dt))
+ return dt;
+ return File.GetLastWriteTimeUtc(path);
+ }
+
+ return candidates.OrderByDescending(Score).First();
+ }
+
+ private static bool TryUnzip(string zipPath, string destination, out string error)
+ {
+ try
+ {
+ var asm = Assembly.Load("System.IO.Compression.FileSystem");
+ var zipType = asm.GetType("System.IO.Compression.ZipFile");
+ var mi = zipType.GetMethod("ExtractToDirectory", new Type[] { typeof(string), typeof(string) });
+ if (mi == null) { error = "ZipFile.ExtractToDirectory overload not found."; return false; }
+ mi.Invoke(null, new object[] { zipPath, destination });
+ error = null; return true;
+ }
+ catch (Exception ex) { error = ex.Message; return false; }
+ }
  }
 
  internal static class HtmlBuilder
