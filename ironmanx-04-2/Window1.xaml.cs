@@ -222,6 +222,14 @@ namespace ironmanx_04_2
  {
  File.Copy(changedPath, originalPath, true);
  Log("Replaced original report with changed report.");
+
+ // If changed file was in the same directory as the original, delete it to avoid duplicates
+ var oDir = Path.GetDirectoryName(originalPath) ?? string.Empty;
+ var cDir = Path.GetDirectoryName(changedPath) ?? string.Empty;
+ if (string.Equals(oDir, cDir, StringComparison.OrdinalIgnoreCase))
+ {
+ try { File.Delete(changedPath); Log("Removed changed file from source directory."); } catch (Exception delEx) { Log("Could not delete changed file: " + delEx.Message); }
+ }
  }
  else
  {
@@ -233,11 +241,11 @@ namespace ironmanx_04_2
  Log("Failed to replace original report: " + rex.Message);
  }
 
- Log("Archive complete: " + (_lastArchiveFolder ?? versionFolder));
+ Log("Push complete: " + (_lastArchiveFolder ?? versionFolder));
  }
  catch (Exception ex)
  {
- Warn("Archive failed: " + ex.Message);
+ Warn("Push failed: " + ex.Message);
  }
  }
 
