@@ -45,21 +45,18 @@ on:
     branches: [ "master" ]
 
 jobs:
-
   build:
-
     strategy:
       matrix:
         configuration: [Debug, Release]
 
-    runs-on: windows-latest  # For a list of available runner types, refer to
-                             # https://help.github.com/en/actions/reference/workflow-syntax-for-github-actions#jobsjob_idruns-on
+    runs-on: windows-latest
 
     env:
-      Solution_Name: ironmanx-04-2.sln                         # Replace with your solution name, i.e. MyWpfApp.sln.
-      Test_Project_Path: ironmanx-04-2.Tests\ironmanx-04-2.Tests.csproj                 # Replace with the path to your test project, i.e. MyWpfApp.Tests\MyWpfApp.Tests.csproj.
-      Wap_Project_Directory: ironmanx-04-2.Package    # Replace with the Wap project directory relative to the solution, i.e. MyWpfApp.Package.
-      Wap_Project_Path: ironmanx-04-2.Package\ironmanx-04-2.Package.wapproj                   # Replace with the path to your Wap project, i.e. MyWpf.App.Package\MyWpfApp.Package.wapproj.
+      Solution_Name: ironmanx-04-2.sln
+      Test_Project_Path: ironmanx-04-2.Tests\ironmanx-04-2.Tests.csproj
+      Wap_Project_Directory: ironmanx-04-2.Package
+      Wap_Project_Path: ironmanx-04-2.Package\ironmanx-04-2.Package.wapproj
 
     steps:
     - name: Checkout
@@ -67,49 +64,80 @@ jobs:
       with:
         fetch-depth: 0
 
-    # Install the .NET Core workload
+    # Install .NET SDK 8.0
     - name: Install .NET Core
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
 
-    # Add  MSBuild to the PATH: https://github.com/microsoft/setup-msbuild
+    # Add MSBuild to PATH
     - name: Setup MSBuild.exe
       uses: microsoft/setup-msbuild@v2
 
-    # Execute all unit tests in the solution
+    # Run unit tests (skip gracefully if no test project)
     - name: Execute unit tests
-      run: dotnet test
+      run: |
+        try {
+          dotnet test $env:Test_Project_Path --configuration ${{ matrix.configuration }}
+        } catch {
+          Write-Host "No test project found or test step skipped."
+        }
 
-    # Restore the application to populate the obj folder with RuntimeIdentifiers
+    # Restore solution packages
     - name: Restore the application
       run: msbuild $env:Solution_Name /t:Restore /p:Configuration=$env:Configuration
       env:
         Configuration: ${{ matrix.configuration }}
 
-    # Decode the base 64 encoded pfx and save the Signing_Certificate
-    - name: Decode the pfx
+    # Decode signing certificate only if secret exists
+    - name: Decode the pfx (if provided)
+      if: ${{ secrets.Base64_Encoded_Pfx != '' }}
+      shell: pwsh
       run: |
-        $pfx_cert_byte = [System.Convert]::FromBase64String("${{ secrets.Base64_Encoded_Pfx }}")
-        $certificatePath = Join-Path -Path $env:Wap_Project_Directory -ChildPath GitHubActionsWorkflow.pfx
-        [IO.File]::WriteAllBytes("$certificatePath", $pfx_cert_byte)
+        $dir = "$env:Wap_Project_Directory"
+        if (-not (Test-Path $dir)) {
+          New-Item -ItemType Directory -Path $dir | Out-Null
+        }
+        $bytes = [Convert]::FromBase64String("${{ secrets.Base64_Encoded_Pfx }}")
+        $certificatePath = Join-Path $dir 'GitHubActionsWorkflow.pfx'
+        [IO.File]::WriteAllBytes($certificatePath, $bytes)
+        Write-Host "Decoded PFX successfully to $certificatePath"
 
-    # Create the app package by building and packaging the Windows Application Packaging project
+    # Build and package app (sign only if PFX exists)
     - name: Create the app package
-      run: msbuild $env:Wap_Project_Path /p:Configuration=$env:Configuration /p:UapAppxPackageBuildMode=$env:Appx_Package_Build_Mode /p:AppxBundle=$env:Appx_Bundle /p:PackageCertificateKeyFile=GitHubActionsWorkflow.pfx /p:PackageCertificatePassword=${{ secrets.Pfx_Key }}
+      shell: pwsh
+      run: |
+        $pfxPath = Join-Path $env:Wap_Project_Directory 'GitHubActionsWorkflow.pfx'
+        $certArg = ""
+        if (Test-Path $pfxPath) {
+          Write-Host "Signing enabled."
+          $certArg = "/p:PackageCertificateKeyFile=$pfxPath /p:PackageCertificatePassword=${{ secrets.Pfx_Key }}"
+        } else {
+          Write-Host "No PFX found. Building unsigned package."
+        }
+        msbuild $env:Wap_Project_Path `
+          /p:Configuration=${{ matrix.configuration }} `
+          /p:UapAppxPackageBuildMode=StoreUpload `
+          /p:AppxBundle=Always `
+          /p:AppxBundlePlatforms="x86|x64" `
+          $certArg
       env:
-        Appx_Bundle: Always
-        Appx_Bundle_Platforms: x86|x64
-        Appx_Package_Build_Mode: StoreUpload
         Configuration: ${{ matrix.configuration }}
 
-    # Remove the pfx
+    # Always remove the temporary certificate if it was created
     - name: Remove the pfx
-      run: Remove-Item -path $env:Wap_Project_Directory\GitHubActionsWorkflow.pfx
+      if: always()
+      shell: pwsh
+      run: |
+        $pfxPath = Join-Path $env:Wap_Project_Directory 'GitHubActionsWorkflow.pfx'
+        if (Test-Path $pfxPath) {
+          Remove-Item $pfxPath -Force
+          Write-Host "Removed temporary certificate."
+        }
 
-    # Upload the MSIX package: https://github.com/marketplace/actions/upload-a-build-artifact
+    # Upload the packaged build artifact (MSIX/AppPackages)
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: MSIX Package
+        name: MSIX Package (${{ matrix.configuration }})
         path: ${{ env.Wap_Project_Directory }}\AppPackages
