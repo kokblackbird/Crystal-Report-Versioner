@@ -44,7 +44,7 @@ on:
   pull_request:
     branches: [ "main", "master" ]
 
-# Give GitHub Actions write access for tagging and releases
+# Give Actions permission to create tags and releases
 permissions:
   contents: write
 
@@ -56,7 +56,7 @@ jobs:
       Solution_Name: ironmanx-04-2.sln
       Project_File: ironmanx-04-2\ironmanx-04-2.csproj
       Project_Directory: ironmanx-04-2
-      Configuration: Release          # Change to Debug if testing
+      Configuration: Release
       Platform: x86
 
     steps:
@@ -95,7 +95,9 @@ jobs:
           name: BuildOutput
           path: ${{ env.Project_Directory }}\bin\${{ env.Platform }}\${{ env.Configuration }}\
 
+      # ---------------------------------------
       # Extract version number from AssemblyInfo.cs
+      # ---------------------------------------
       - name: Get version
         id: get_version
         shell: pwsh
@@ -115,7 +117,9 @@ jobs:
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "Using version: $version"
 
-      # Package build into ZIP
+      # ---------------------------------------
+      # Package artifacts into ZIP
+      # ---------------------------------------
       - name: Package artifacts into ZIP
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && env.Configuration == 'Release'
         shell: pwsh
@@ -131,9 +135,10 @@ jobs:
             Write-Host "Output directory not found: $outDir"
           }
 
-      # Create GitHub Release automatically
-      - name: Create Release
-        id: create_release
+      # ---------------------------------------
+      # Create Release and Upload Assets
+      # ---------------------------------------
+      - name: Create Release & Upload Assets
         uses: softprops/action-gh-release@v2
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && env.Configuration == 'Release'
         with:
@@ -144,16 +149,11 @@ jobs:
             Commit: ${{ github.sha }}  
             Configuration: ${{ env.Configuration }}  
             Platform: ${{ env.Platform }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # Upload build outputs to the release
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
-        if: steps.create_release.outputs.upload_url != ''
-        with:
           files: |
             ${{ env.Project_Directory }}\bin\${{ env.Platform }}\${{ env.Configuration }}\*.exe
             ${{ env.Project_Directory }}\bin\${{ env.Platform }}\${{ env.Configuration }}\*.zip
+          generate_release_notes: true
+          make_latest: true
+          overwrite: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
