@@ -36,7 +36,7 @@
 # For a complete CI/CD sample to get started with GitHub Action workflows for Desktop Applications,
 # refer to https://github.com/microsoft/github-actions-for-desktop-apps
 
-name: .NET Core Desktop
+name: .NET Desktop — Auto Package if WAP Present
 
 on:
   push:
@@ -47,17 +47,12 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-
     strategy:
       matrix:
         configuration: [Debug, Release]
 
-    # Project-specific paths + map secrets -> env so we can use them in `if:` without parser errors
     env:
-      Solution_Name: ironmanx-04-2.sln
-      Test_Project_Path: ironmanx-04-2.Tests\ironmanx-04-2.Tests.csproj
-      Wap_Project_Directory: ironmanx-04-2.Package
-      Wap_Project_Path: ironmanx-04-2.Package\ironmanx-04-2.Package.wapproj
+      # Map secrets to env (optional; used only if WAP exists)
       PFX_B64: ${{ secrets.Base64_Encoded_Pfx }}
       PFX_KEY: ${{ secrets.Pfx_Key }}
 
@@ -67,7 +62,7 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Install .NET 8 SDK
+    - name: Setup .NET 8 SDK
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
@@ -75,65 +70,103 @@ jobs:
     - name: Setup MSBuild.exe
       uses: microsoft/setup-msbuild@v2
 
-    - name: Execute unit tests (if present)
+    - name: Locate solution and projects
       shell: pwsh
       run: |
-        try {
-          if (Test-Path "$env:Test_Project_Path") {
-            dotnet test "$env:Test_Project_Path" --configuration "${{ matrix.configuration }}"
-          } else {
-            Write-Host "No test project at $env:Test_Project_Path — skipping."
-          }
-        } catch {
-          Write-Host "Tests failed (continuing CI)."; exit 1
-        }
+        Write-Host "Scanning repo for .sln, .csproj, .wapproj ..."
+        Get-ChildItem -Recurse -File -Include *.sln,*.csproj,*.wapproj | ForEach-Object { $_.FullName }
 
-    - name: Restore the application
-      run: msbuild $env:Solution_Name /t:Restore /p:Configuration=${{ matrix.configuration }}
+        $solution = Get-ChildItem -Recurse -Filter *.sln | Select-Object -First 1
+        if (-not $solution) { throw "No .sln found. Add a solution or update the workflow to point at a csproj." }
+        "SOLUTION_PATH=$($solution.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-    # Decode PFX only if the secret/environment var is non-empty
-    - name: Decode the pfx (if provided)
-      if: ${{ env.PFX_B64 != '' }}
-      shell: pwsh
-      run: |
-        if (-not (Test-Path "$env:Wap_Project_Directory")) {
-          New-Item -ItemType Directory -Path "$env:Wap_Project_Directory" | Out-Null
-        }
-        $bytes = [Convert]::FromBase64String($env:PFX_B64)
-        $certificatePath = Join-Path $env:Wap_Project_Directory 'GitHubActionsWorkflow.pfx'
-        [IO.File]::WriteAllBytes($certificatePath, $bytes)
-        Write-Host "Wrote certificate to $certificatePath"
+        # Pick a primary app csproj (first non-test desktop csproj) for publish if no WAP present
+        $appProj = Get-ChildItem -Recurse -Filter *.csproj |
+          Where-Object { $_.FullName -notmatch '\.Tests\\|\.Test\\' } |
+          Select-Object -First 1
+        if ($appProj) { "APP_CSPROJ=$($appProj.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append }
 
-    - name: Create the app package (sign if PFX exists)
-      shell: pwsh
-      run: |
-        $pfxPath = Join-Path $env:Wap_Project_Directory 'GitHubActionsWorkflow.pfx'
-        $certArg = ""
-        if (Test-Path $pfxPath) {
-          Write-Host "Signing enabled."
-          $certArg = "/p:PackageCertificateKeyFile=$pfxPath /p:PackageCertificatePassword=$env:PFX_KEY"
+        # Try to find a WAP project
+        $wap = Get-ChildItem -Recurse -Filter *.wapproj | Select-Object -First 1
+        if ($wap) {
+          "HAS_WAP=true" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "WAP_PATH=$($wap.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $wapDir = Split-Path $wap.FullName -Parent
+          "WAP_DIR=$wapDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "APP_PACKAGES_DIR=$wapDir\AppPackages" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Found WAP: $($wap.FullName)"
         } else {
-          Write-Host "No PFX present — building unsigned package."
+          "HAS_WAP=false" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "No WAP project found. Will publish plain binaries."
         }
-        msbuild $env:Wap_Project_Path `
+
+    - name: Restore solution
+      run: msbuild "$env:SOLUTION_PATH" /t:Restore /p:Configuration=${{ matrix.configuration }}
+
+    - name: Build solution
+      run: msbuild "$env:SOLUTION_PATH" /p:Configuration=${{ matrix.configuration }} /m
+
+    - name: Run tests (if any discovered)
+      shell: pwsh
+      run: |
+        $testProjs = Get-ChildItem -Recurse -Filter *.csproj | Where-Object { $_.FullName -match '\.Tests\\|\.Test\\' }
+        if ($testProjs) {
+          dotnet test "$env:SOLUTION_PATH" --configuration "${{ matrix.configuration }}"
+        } else {
+          Write-Host "No test projects found — skipping."
+        }
+
+    # ----------- MSIX path (only runs if a WAP exists) -----------
+    - name: Decode PFX (if provided)
+      if: env.HAS_WAP == 'true' && env.PFX_B64 != ''
+      shell: pwsh
+      run: |
+        if (-not (Test-Path "$env:WAP_DIR")) { New-Item -ItemType Directory -Path "$env:WAP_DIR" | Out-Null }
+        $bytes = [Convert]::FromBase64String($env:PFX_B64)
+        $pfx = Join-Path $env:WAP_DIR 'GitHubActionsWorkflow.pfx'
+        [IO.File]::WriteAllBytes($pfx, $bytes)
+        "PFX_PATH=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Append
+        Write-Host "Wrote PFX to $pfx"
+
+    - name: Create MSIX (sign if PFX present)
+      if: env.HAS_WAP == 'true'
+      shell: pwsh
+      run: |
+        $certArg = ""
+        if ($env:PFX_PATH -and (Test-Path $env:PFX_PATH)) {
+          Write-Host "Signing enabled."
+          $certArg = "/p:PackageCertificateKeyFile=$env:PFX_PATH /p:PackageCertificatePassword=$env:PFX_KEY"
+        } else {
+          Write-Host "No PFX provided — building unsigned MSIX."
+        }
+        msbuild "$env:WAP_PATH" `
           /p:Configuration=${{ matrix.configuration }} `
           /p:UapAppxPackageBuildMode=StoreUpload `
           /p:AppxBundle=Always `
           /p:AppxBundlePlatforms="x86|x64" `
           $certArg
 
-    - name: Remove the pfx
-      if: always()
+    - name: Cleanup PFX
+      if: always() && env.PFX_PATH != ''
       shell: pwsh
       run: |
-        $pfxPath = Join-Path $env:Wap_Project_Directory 'GitHubActionsWorkflow.pfx'
-        if (Test-Path $pfxPath) {
-          Remove-Item $pfxPath -Force
-          Write-Host "Removed temporary certificate."
-        }
+        if (Test-Path $env:PFX_PATH) { Remove-Item $env:PFX_PATH -Force }
 
     - name: Upload MSIX artifacts
+      if: env.HAS_WAP == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: MSIX Package (${{ matrix.configuration }})
-        path: ${{ env.Wap_Project_Directory }}\AppPackages
+        path: ${{ env.APP_PACKAGES_DIR }}
+
+    # ----------- Non-MSIX path (if no WAP) -----------
+    - name: Publish desktop app (no MSIX)
+      if: env.HAS_WAP != 'true'
+      run: dotnet publish "$env:APP_CSPROJ" -c ${{ matrix.configuration }} -o out/${{ matrix.configuration }}
+
+    - name: Upload published binaries (no MSIX)
+      if: env.HAS_WAP != 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: App Binaries (${{ matrix.configuration }})
+        path: out/${{ matrix.configuration }}
