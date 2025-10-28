@@ -16,7 +16,6 @@ A lightweight Windows WPF tool for versioning SAP Crystal Reports. Compare and a
 - Quick start
 - What gets generated
 - Troubleshooting / FAQ
-- Keywords and GitHub topics
 
 ## Why this tool
 Crystal Reports often live on file shares without proper version control. This app gives you a fast, GUI-based workflow to diff two report versions, archive the result, and revert when needed—without introducing a full VCS or scripting.
@@ -74,8 +73,3 @@ Per push:
 
 - Q: What's inside the Release .zip download?
  - A: The GitHub Releases `.zip` contains the compiled Windows binaries targeting .NET Framework4.8. For Crystal-level analysis, the SAP Crystal Reports runtime (CRRuntime_64bit_13_0_xx) is required and is not bundled due to licensing. The app still produces binary-level diffs and archives without the runtime. Some builds may include `CrystalDecisions.*` dependencies to support viewing/interop, but these do not replace the official runtime.
-
-## Keywords and GitHub topics
-Use these topics on GitHub to help others discover this repo:
-- `crystal-reports`, `sap-crystal-reports`, `rpt`, `report-diff`, `diff-tool`, `archive`, `versioning`, `wpf`, `.net-framework-4.8`, `windows`
-- Useful phrases: "Crystal Reports diff", "compare .rpt files", "archive Crystal Reports", "revert .rpt", "WPF report diff", "SAP Crystal runtime"
