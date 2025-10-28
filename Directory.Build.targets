@@ -31,4 +31,25 @@
  <Link>resources\%(RecursiveDir)%(Filename)%(Extension)</Link>
  </Content>
  </ItemGroup>
+
+ <!-- Include the icon file as a project item if present -->
+ <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\resources\icon.ico')">
+ <None Include="$(MSBuildProjectDirectory)\resources\icon.ico">
+ <Link>resources\icon.ico</Link>
+ </None>
+ </ItemGroup>
+
+ <!-- Set executable icon for projects that have resources/icon.ico -->
+ <PropertyGroup>
+ <_BrandIconRelative>resources\icon.ico</_BrandIconRelative>
+ </PropertyGroup>
+ <PropertyGroup Condition="Exists('$(MSBuildProjectDirectory)\$(_BrandIconRelative)') and '$(ApplicationIcon)' == ''">
+ <ApplicationIcon>$(_BrandIconRelative)</ApplicationIcon>
+ </PropertyGroup>
+
+ <!-- Diagnostics -->
+ <Target Name="LogAppIcon" BeforeTargets="CoreCompile">
+ <Message Text="[Directory.Build.targets] Probe=$(MSBuildProjectDirectory)\$(_BrandIconRelative) Exists=$([System.IO.File]::Exists('$(MSBuildProjectDirectory)\$(_BrandIconRelative)'))" Importance="High" />
+ <Message Text="[Directory.Build.targets] ApplicationIcon=$(ApplicationIcon) (Project=$(MSBuildProjectName))" Importance="High" />
+ </Target>
 </Project>
