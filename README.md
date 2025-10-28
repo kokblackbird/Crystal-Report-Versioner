@@ -63,12 +63,17 @@ Per push:
 - Master changelog updated at `<archive root>/<reportName>/ChangeLog-<reportName>.html`
 
 ## Troubleshooting / FAQ
-- No SAP Crystal runtime installed
- - The app still works; Crystal-level analysis is skipped. Binary diff and archive are produced.
-- Can’t find or load the window icon
- - The icon is copied to the output `resources/` and set at runtime. Ensure `resources/icon.ico` exists in the project.
-- Where can I see the app version?
- - The version is shown in the footer (status bar) as `v<version>` for easy screenshots when reporting issues.
+- Q: No SAP Crystal runtime installed
+ - A: The app still works; Crystal-level analysis is skipped. Binary diff and archive are produced.
+
+- Q: Can't find or load the window icon
+ - A: The icon is copied to the output `resources/` and set at runtime. Ensure `resources/icon.ico` exists in the project.
+
+- Q: Where can I see the app version?
+ - A: The version is shown in the footer (status bar) as `v<version>` for easy screenshots when reporting issues.
+
+- Q: What's inside the Release .zip download?
+ - A: The GitHub Releases `.zip` contains the compiled Windows binaries targeting .NET Framework4.8. For Crystal-level analysis, the SAP Crystal Reports runtime (CRRuntime_64bit_13_0_xx) is required and is not bundled due to licensing. The app still produces binary-level diffs and archives without the runtime. Some builds may include `CrystalDecisions.*` dependencies to support viewing/interop, but these do not replace the official runtime.
 
 ## Keywords and GitHub topics
 Use these topics on GitHub to help others discover this repo:
