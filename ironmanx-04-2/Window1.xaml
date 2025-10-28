@@ -169,6 +169,10 @@
             <StatusBarItem>
                 <TextBlock Text="Crystal Report Versioner"/>
             </StatusBarItem>
+            <Separator/>
+            <StatusBarItem>
+                <TextBlock x:Name="AppVersionText" Text="v-"/>
+            </StatusBarItem>
         </StatusBar>
     </Grid>
 </Window>

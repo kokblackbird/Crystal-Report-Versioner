@@ -25,7 +25,23 @@ namespace ironmanx_04_2
  {
  InitializeComponent();
  TryApplyWindowIconFromContent();
+ ApplyAppVersionToFooter();
  ShowCrystalRuntimeNoticeIfMissing();
+ }
+
+ private void ApplyAppVersionToFooter()
+ {
+ try
+ {
+ var asm = Assembly.GetExecutingAssembly();
+ var fvi = FileVersionInfo.GetVersionInfo(asm.Location);
+ var version = fvi.FileVersion; // shows AssemblyFileVersion
+ if (AppVersionText != null)
+ {
+ AppVersionText.Text = "v" + version;
+ }
+ }
+ catch { /* ignore */ }
  }
 
  private void TryApplyWindowIconFromContent()
