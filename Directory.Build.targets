@@ -23,4 +23,12 @@
  <Private>true</Private>
  </Reference>
  </ItemGroup>
+
+ <!-- Ensure resources folder files (like icon.ico) are copied to output so runtime loading works -->
+ <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\resources')">
+ <Content Include="$(MSBuildProjectDirectory)\resources\**\*.*">
+ <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+ <Link>resources\%(RecursiveDir)%(Filename)%(Extension)</Link>
+ </Content>
+ </ItemGroup>
 </Project>

@@ -16,9 +16,6 @@ using System.Windows;
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
-// Setting ComVisible to false makes the types in this assembly not visible 
-// to COM components.  If you need to access a type in this assembly from 
-// COM, set the ComVisible attribute to true on that type.
 [assembly: ComVisible(false)]
 
 //In order to begin building localizable applications, set 
@@ -39,6 +36,9 @@ using System.Windows;
                                               //(used if a resource is not found in the page, 
                                               // app, or any theme specific resource dictionaries)
 )]
+
+// Use application icon from resources for the executable
+[assembly: AssemblyMetadata("ApplicationIcon", "resources/icon.ico")]
 
 
 // Version information for an assembly consists of the following four values:

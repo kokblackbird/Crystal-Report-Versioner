@@ -24,7 +24,48 @@ namespace ironmanx_04_2
  public Window1()
  {
  InitializeComponent();
+ TryApplyWindowIconFromContent();
  ShowCrystalRuntimeNoticeIfMissing();
+ }
+
+ private void TryApplyWindowIconFromContent()
+ {
+ try
+ {
+ var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+ var candidates = new[]
+ {
+ Path.Combine(baseDir, "resources", "icon.ico"),
+ Path.Combine(baseDir, "icon.ico"),
+ Path.Combine(baseDir, "resources", "icon.png"),
+ Path.Combine(baseDir, "icon.png")
+ };
+ foreach (var path in candidates)
+ {
+ if (!File.Exists(path)) continue;
+ try
+ {
+ var uri = new Uri(path, UriKind.Absolute);
+ var frame = System.Windows.Media.Imaging.BitmapFrame.Create(
+ uri,
+ System.Windows.Media.Imaging.BitmapCreateOptions.None,
+ System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+ frame.Freeze();
+ this.Icon = frame;
+ Debug.WriteLine("Applied window icon from: " + path);
+ return;
+ }
+ catch (Exception ex)
+ {
+ Debug.WriteLine("Failed to load icon from '" + path + "': " + ex.Message);
+ }
+ }
+ Debug.WriteLine("No window icon found. Looked in: " + string.Join(", ", candidates));
+ }
+ catch
+ {
+ // ignore: keep default icon if load fails
+ }
  }
 
  private void ShowCrystalRuntimeNoticeIfMissing()
