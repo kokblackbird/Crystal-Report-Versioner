@@ -1,29 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
- <!--
- Crystal Reports local references
- These are added for all projects in this repo if the binaries exist in lib/CrystalReports.
- They are marked Private=true so they copy to bin on build.
- -->
- <ItemGroup Condition="Exists('ironmanx-04-2\\lib\\CrystalReports\\CrystalDecisions.CrystalReports.Engine.dll')">
+ <!-- Crystal Reports local references resolved under each project dir -->
+ <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\lib\CrystalReports\CrystalDecisions.CrystalReports.Engine.dll')">
  <Reference Include="CrystalDecisions.CrystalReports.Engine">
- <HintPath>..\lib\CrystalReports\CrystalDecisions.CrystalReports.Engine.dll</HintPath>
+ <HintPath>$(MSBuildProjectDirectory)\lib\CrystalReports\CrystalDecisions.CrystalReports.Engine.dll</HintPath>
  <Private>true</Private>
  </Reference>
  <Reference Include="CrystalDecisions.ReportSource">
- <HintPath>..\lib\CrystalReports\CrystalDecisions.ReportSource.dll</HintPath>
+ <HintPath>$(MSBuildProjectDirectory)\lib\CrystalReports\CrystalDecisions.ReportSource.dll</HintPath>
  <Private>true</Private>
  </Reference>
  <Reference Include="CrystalDecisions.Shared">
- <HintPath>..\lib\CrystalReports\CrystalDecisions.Shared.dll</HintPath>
+ <HintPath>$(MSBuildProjectDirectory)\lib\CrystalReports\CrystalDecisions.Shared.dll</HintPath>
  <Private>true</Private>
  </Reference>
  <Reference Include="SAPBusinessObjects.WPF.Viewer">
- <HintPath>..\lib\CrystalReports\SAPBusinessObjects.WPF.Viewer.dll</HintPath>
+ <HintPath>$(MSBuildProjectDirectory)\lib\CrystalReports\SAPBusinessObjects.WPF.Viewer.dll</HintPath>
  <Private>true</Private>
  </Reference>
  <Reference Include="SAPBusinessObjects.WPF.ViewerShared">
- <HintPath>..\lib\CrystalReports\SAPBusinessObjects.WPF.ViewerShared.dll</HintPath>
+ <HintPath>$(MSBuildProjectDirectory)\lib\CrystalReports\SAPBusinessObjects.WPF.ViewerShared.dll</HintPath>
  <Private>true</Private>
  </Reference>
  </ItemGroup>
