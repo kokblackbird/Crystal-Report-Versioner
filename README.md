@@ -1,42 +1,74 @@
-# Crystal Report Versioner (WPF, .NET Framework4.8)
+# Crystal Report Versioner – Diff, Archive, and Revert SAP Crystal Reports (.rpt) on Windows
 
-This app versions and archives changes to Crystal Reports (`.rpt`) files, with easy push and revert flows.
+A lightweight Windows WPF tool for versioning SAP Crystal Reports. Compare and archive changes to `.rpt` files, generate human?readable diffs, and safely revert to previous versions. Built for .NET Framework4.8.
+
+- Works offline on local `.rpt` files
+- Creates timestamped archives with HTML reports and metadata
+- Optional deep analysis when the SAP Crystal Reports runtime is available
+
+## Table of contents
+- Why this tool
+- Features
+- Requirements and prerequisites
+- Install / Build
+- Quick start
+- What gets generated
+- Troubleshooting / FAQ
+- Keywords and GitHub topics
+
+## Why this tool
+Crystal Reports often live on file shares without proper version control. This app gives you a fast, GUI-based workflow to diff two report versions, archive the result, and revert when needed—without introducing a full VCS or scripting.
 
 ## Features
+- Push Changes (archive + replace):
+ - Diffs Original vs Changed `.rpt`
+ - Saves version under `archive/<reportName>/vyyyyMMdd-HHmmss/`
+ - Generates `changes.html` (summary) and `metadata.json`
+ - Produces a zip artifact and replaces the Original with the Changed file
+ - Cleans up duplicate Changed files if both were in the same folder
+- Revert to Last Change: restore the previously archived Original
+- Master Changelog per report: `ChangeLog-<reportName>.html` with links to zips
+- Optional Crystal?level analysis (when SAP runtime present):
+ - Record Selection Formula
+ - Formula fields / Parameter fields
+ - Table list changes
+- Dark, minimal WPF UI for Windows
 
-- **Push Changes:** Archive diff of Original vs Changed report into `archive/<reportName>/vyyyyMMdd-HHmmss/`, generate `changes.html` and `metadata.json`, zip the version, and replace the Original file with the Changed file.
-- **Auto-clean:** If Original and Changed are in the same folder, the Changed file is removed after replacement to avoid duplicates.
-- **Revert to Last Change:** Restore the previous archived Original back to the live location and record the revert in changelog.
-- **Master changelog:** `ChangeLog-<reportName>.html` in the report’s archive root, appending a section per push/revert with links to the created zip.
-- **Optional deep Crystal analysis:** When SAP Crystal runtime is available, shows selection formula, formula fields, parameters, and table changes.
+## Requirements and prerequisites
+- Windows with .NET Framework4.8
+- Optional: SAP Crystal Reports runtime (CRRuntime_64bit_13_0_xx) to enable deep Crystal analysis. Without it, the app still performs binary diffs and archiving.
 
-## Requirements
+## Install / Build
+- Build from source:
+ - Open the solution in Visual Studio2019/2022 (with .NET Framework4.8 targeting pack)
+ - Restore dependencies and Build
+ - Run the `ironmanx-04-2` WPF app
+- Runtime branding icon is included; the app window and exe show the same icon.
 
-- **Software:**
-  - .NET Framework 4.8
-  - Optional: SAP Crystal Reports runtime (CRRuntime_64bit_13_0_xx) for deep analysis.
-- **Hardware:** No specific hardware requirements, but sufficient disk space is needed for archiving reports.
+## Quick start
+1) Select Original `.rpt` and Changed `.rpt`
+2) Pick Archive root (defaults to `<original directory>\archive`)
+3) Enter a message (optional)
+4) Click Push Changes
+5) To undo: select the Original path and click Revert to Last Change
 
-## How to use
+## What gets generated
+Per push:
+- Zip: `<archive root>/<reportName>/<reportName>-<timestamp>.zip`
+- Version folder (pre?zip): `v<timestamp>/` containing:
+ - `changes.html` (diff summary)
+ - `metadata.json` (file hashes, sizes, diff stats, analysis mode)
+- Master changelog updated at `<archive root>/<reportName>/ChangeLog-<reportName>.html`
 
-To use the Crystal Report Versioner, follow these steps:
+## Troubleshooting / FAQ
+- No SAP Crystal runtime installed
+ - The app still works; Crystal?level analysis is skipped. Binary diff and archive are produced.
+- Can’t find or load the window icon
+ - The icon is copied to the output `resources/` and set at runtime. Ensure `resources/icon.ico` exists in the project.
+- Where can I see the app version?
+ - The version is shown in the footer (status bar) as `v<version>` for easy screenshots when reporting issues.
 
-1. Select the Original `.rpt` and Changed `.rpt` files.
-2. Archive root auto-fills to `<original directory>\archive` or set it manually.
-3. Enter a message (optional).
-4. Click Push Changes.
-5. To undo, select the Original `.rpt` path and click Revert to Last Change.
-
-## Outputs per push
-
-For each push of a report, the versioner produces:
-
-- A zip file: `<archive root>/<reportName>/<reportName>-<timestamp>.zip`
-- `changes.html`, `metadata.json` inside each version (pre-zip)
-- Master `ChangeLog-<reportName>.html` updated in `<archive root>/<reportName>/`
-
-## Notes
-
-- If Crystal runtime is unavailable, push still works; Crystal analysis is skipped.
-- Folder picker provided for selecting archive root; defaults to `<original>\archive`.
-- UI uses a dark “hyper-clean” theme with flat, modern buttons.
+## Keywords and GitHub topics
+Improve discoverability by adding these topics to the repository:
+- Topics: `crystal-reports`, `sap-crystal-reports`, `rpt`, `report-diff`, `diff-tool`, `archive`, `versioning`, `wpf`, `.net-framework-4.8`, `windows`
+- Phrases to include in issues/docs: “Crystal Reports diff”, “compare .rpt files”, “archive Crystal Reports”, “revert .rpt”, “WPF report diff”, “SAP Crystal runtime”.
