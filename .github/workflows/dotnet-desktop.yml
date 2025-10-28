@@ -18,7 +18,7 @@ jobs:
       Project_File: ironmanx-04-2\ironmanx-04-2.csproj
       Project_Directory: ironmanx-04-2
       Configuration: Release
-      Platform: x86
+      Platform: x64
 
     steps:
       - name: Checkout repository
