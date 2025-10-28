@@ -1,6 +1,8 @@
 # Crystal Report Versioner – Diff, Archive, and Revert SAP Crystal Reports (.rpt) on Windows
 
-A lightweight Windows WPF tool for versioning SAP Crystal Reports. Compare and archive changes to `.rpt` files, generate human?readable diffs, and safely revert to previous versions. Built for .NET Framework4.8.
+A lightweight Windows WPF tool for versioning SAP Crystal Reports. Compare and archive changes to `.rpt` files, generate human-readable diffs, and safely revert to previous versions. Built for .NET Framework4.8.
+
+![Crystal Report Versioner main window](assets/mainwindow.png)
 
 - Works offline on local `.rpt` files
 - Creates timestamped archives with HTML reports and metadata
@@ -27,8 +29,8 @@ Crystal Reports often live on file shares without proper version control. This a
  - Produces a zip artifact and replaces the Original with the Changed file
  - Cleans up duplicate Changed files if both were in the same folder
 - Revert to Last Change: restore the previously archived Original
-- Master Changelog per report: `ChangeLog-<reportName>.html` with links to zips
-- Optional Crystal?level analysis (when SAP runtime present):
+- Master changelog per report: `ChangeLog-<reportName>.html` with links to zips
+- Optional Crystal-level analysis (when SAP runtime present):
  - Record Selection Formula
  - Formula fields / Parameter fields
  - Table list changes
@@ -55,20 +57,20 @@ Crystal Reports often live on file shares without proper version control. This a
 ## What gets generated
 Per push:
 - Zip: `<archive root>/<reportName>/<reportName>-<timestamp>.zip`
-- Version folder (pre?zip): `v<timestamp>/` containing:
+- Version folder (pre-zip): `v<timestamp>/` containing:
  - `changes.html` (diff summary)
  - `metadata.json` (file hashes, sizes, diff stats, analysis mode)
 - Master changelog updated at `<archive root>/<reportName>/ChangeLog-<reportName>.html`
 
 ## Troubleshooting / FAQ
 - No SAP Crystal runtime installed
- - The app still works; Crystal?level analysis is skipped. Binary diff and archive are produced.
+ - The app still works; Crystal-level analysis is skipped. Binary diff and archive are produced.
 - Can’t find or load the window icon
  - The icon is copied to the output `resources/` and set at runtime. Ensure `resources/icon.ico` exists in the project.
 - Where can I see the app version?
  - The version is shown in the footer (status bar) as `v<version>` for easy screenshots when reporting issues.
 
 ## Keywords and GitHub topics
-Improve discoverability by adding these topics to the repository:
-- Topics: `crystal-reports`, `sap-crystal-reports`, `rpt`, `report-diff`, `diff-tool`, `archive`, `versioning`, `wpf`, `.net-framework-4.8`, `windows`
-- Phrases to include in issues/docs: “Crystal Reports diff”, “compare .rpt files”, “archive Crystal Reports”, “revert .rpt”, “WPF report diff”, “SAP Crystal runtime”.
+Use these topics on GitHub to help others discover this repo:
+- `crystal-reports`, `sap-crystal-reports`, `rpt`, `report-diff`, `diff-tool`, `archive`, `versioning`, `wpf`, `.net-framework-4.8`, `windows`
+- Useful phrases: "Crystal Reports diff", "compare .rpt files", "archive Crystal Reports", "revert .rpt", "WPF report diff", "SAP Crystal runtime"
