@@ -44,9 +44,8 @@ on:
   pull_request:
     branches: [ "main", "master" ]
 
-# Give Actions permission to create tags and releases
 permissions:
-  contents: write
+  contents: write   # allow GITHUB_TOKEN to create tags/releases
 
 jobs:
   build:
@@ -89,15 +88,32 @@ jobs:
             msbuild $env:Project_File /p:Configuration=$env:Configuration /p:Platform=$env:Platform /m
           }
 
+      # Detect the actual output directory (bin/x86/Release or bin/Release)
+      - name: Resolve build output path
+        id: outdir
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:Project_Directory 'bin'
+          $withPlatform = Join-Path $root (Join-Path $env:Platform $env:Configuration)
+          $noPlatform   = Join-Path $root $env:Configuration
+
+          if (Test-Path $withPlatform) { $final = $withPlatform }
+          elseif (Test-Path $noPlatform) { $final = $noPlatform }
+          else { throw "No output dir found. Tried: `n$withPlatform`n$noPlatform" }
+
+          "ARTIFACT_DIR=$final" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "artifact_dir=$final" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+          Write-Host "Using output dir: $final"
+          Get-ChildItem -Recurse $final | Select-Object FullName,Length | Format-Table | Out-String | Write-Host
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: BuildOutput
-          path: ${{ env.Project_Directory }}\bin\${{ env.Platform }}\${{ env.Configuration }}\
+          path: ${{ steps.outdir.outputs.artifact_dir }}/
 
-      # ---------------------------------------
-      # Extract version number from AssemblyInfo.cs
-      # ---------------------------------------
+      # Extract version number from AssemblyInfo.cs (InformationalVersion > AssemblyVersion > run number)
       - name: Get version
         id: get_version
         shell: pwsh
@@ -117,14 +133,12 @@ jobs:
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "Using version: $version"
 
-      # ---------------------------------------
-      # Package artifacts into ZIP
-      # ---------------------------------------
+      # Zip the output in the detected folder
       - name: Package artifacts into ZIP
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && env.Configuration == 'Release'
         shell: pwsh
         run: |
-          $outDir = Join-Path $env:Project_Directory "bin\$env:Platform\$env:Configuration"
+          $outDir = "${{ steps.outdir.outputs.artifact_dir }}"
           $zipPath = Join-Path $outDir "ironmanx-04-2_${{ steps.get_version.outputs.version }}.zip"
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
           if (Test-Path $outDir) {
@@ -135,9 +149,7 @@ jobs:
             Write-Host "Output directory not found: $outDir"
           }
 
-      # ---------------------------------------
-      # Create Release and Upload Assets
-      # ---------------------------------------
+      # Create Release and upload assets in one step
       - name: Create Release & Upload Assets
         uses: softprops/action-gh-release@v2
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && env.Configuration == 'Release'
@@ -150,10 +162,10 @@ jobs:
             Configuration: ${{ env.Configuration }}  
             Platform: ${{ env.Platform }}
           files: |
-            ${{ env.Project_Directory }}\bin\${{ env.Platform }}\${{ env.Configuration }}\*.exe
-            ${{ env.Project_Directory }}\bin\${{ env.Platform }}\${{ env.Configuration }}\*.zip
+            ${{ steps.outdir.outputs.artifact_dir }}/*.exe
+            ${{ steps.outdir.outputs.artifact_dir }}/*.zip
           generate_release_notes: true
           make_latest: true
-          overwrite: true
+          overwrite_files: true   # <-- correct key
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
