@@ -36,137 +36,62 @@
 # For a complete CI/CD sample to get started with GitHub Action workflows for Desktop Applications,
 # refer to https://github.com/microsoft/github-actions-for-desktop-apps
 
-name: .NET Desktop — Auto Package if WAP Present
+name: .NET Desktop Build
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "main" ]
 
 jobs:
   build:
     runs-on: windows-latest
-    strategy:
-      matrix:
-        configuration: [Debug, Release]
 
     env:
-      # Map secrets to env (optional; used only if WAP exists)
-      PFX_B64: ${{ secrets.Base64_Encoded_Pfx }}
-      PFX_KEY: ${{ secrets.Pfx_Key }}
+      Solution_Name: ironmanx-04-2.sln
+      Project_Directory: ironmanx-04-2
+      Configuration: Debug
+      Wap_Project_Directory: ironmanx-04-2.Package
+      Certificate_Path: GitHubActionsWorkflow.pfx
 
     steps:
-    - name: Checkout
+    - name: Checkout repository
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
 
-    - name: Setup .NET 8 SDK
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 8.0.x
-
-    - name: Setup MSBuild.exe
+    - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
 
-    - name: Locate solution and projects
-      shell: pwsh
-      run: |
-        Write-Host "Scanning repo for .sln, .csproj, .wapproj ..."
-        Get-ChildItem -Recurse -File -Include *.sln,*.csproj,*.wapproj | ForEach-Object { $_.FullName }
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2
 
-        $solution = Get-ChildItem -Recurse -Filter *.sln | Select-Object -First 1
-        if (-not $solution) { throw "No .sln found. Add a solution or update the workflow to point at a csproj." }
-        "SOLUTION_PATH=$($solution.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+    - name: Restore NuGet packages
+      run: nuget restore ${{ env.Solution_Name }}
 
-        # Pick a primary app csproj (first non-test desktop csproj) for publish if no WAP present
-        $appProj = Get-ChildItem -Recurse -Filter *.csproj |
-          Where-Object { $_.FullName -notmatch '\.Tests\\|\.Test\\' } |
-          Select-Object -First 1
-        if ($appProj) { "APP_CSPROJ=$($appProj.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append }
-
-        # Try to find a WAP project
-        $wap = Get-ChildItem -Recurse -Filter *.wapproj | Select-Object -First 1
-        if ($wap) {
-          "HAS_WAP=true" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "WAP_PATH=$($wap.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
-          $wapDir = Split-Path $wap.FullName -Parent
-          "WAP_DIR=$wapDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "APP_PACKAGES_DIR=$wapDir\AppPackages" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Found WAP: $($wap.FullName)"
-        } else {
-          "HAS_WAP=false" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "No WAP project found. Will publish plain binaries."
-        }
-
-    - name: Restore solution
-      run: msbuild "$env:SOLUTION_PATH" /t:Restore /p:Configuration=${{ matrix.configuration }}
-
+    # ---------------------------------------
+    # BUILD (explicitly x86, matches your project)
+    # ---------------------------------------
     - name: Build solution
-      run: msbuild "$env:SOLUTION_PATH" /p:Configuration=${{ matrix.configuration }} /m
+      run: msbuild "${{ env.Solution_Name }}" /p:Configuration=${{ env.Configuration }} /p:Platform=x86 /m
 
-    - name: Run tests (if any discovered)
-      shell: pwsh
+    # ---------------------------------------
+    # PACKAGE (optional)
+    # ---------------------------------------
+    - name: Build app package
+      if: ${{ env.Wap_Project_Directory != '' }}
       run: |
-        $testProjs = Get-ChildItem -Recurse -Filter *.csproj | Where-Object { $_.FullName -match '\.Tests\\|\.Test\\' }
-        if ($testProjs) {
-          dotnet test "$env:SOLUTION_PATH" --configuration "${{ matrix.configuration }}"
+        $projectPath = Join-Path $env:Wap_Project_Directory "$($env.Project_Directory).wapproj"
+        if (Test-Path $projectPath) {
+          msbuild $projectPath /p:Configuration=${{ env.Configuration }} /p:Platform=x86 /p:UapAppxPackageBuildMode=StoreUpload /p:AppxBundle=Always /m
         } else {
-          Write-Host "No test projects found — skipping."
+          Write-Host "No .wapproj file found, skipping package build."
         }
 
-    # ----------- MSIX path (only runs if a WAP exists) -----------
-    - name: Decode PFX (if provided)
-      if: env.HAS_WAP == 'true' && env.PFX_B64 != ''
-      shell: pwsh
-      run: |
-        if (-not (Test-Path "$env:WAP_DIR")) { New-Item -ItemType Directory -Path "$env:WAP_DIR" | Out-Null }
-        $bytes = [Convert]::FromBase64String($env:PFX_B64)
-        $pfx = Join-Path $env:WAP_DIR 'GitHubActionsWorkflow.pfx'
-        [IO.File]::WriteAllBytes($pfx, $bytes)
-        "PFX_PATH=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Append
-        Write-Host "Wrote PFX to $pfx"
-
-    - name: Create MSIX (sign if PFX present)
-      if: env.HAS_WAP == 'true'
-      shell: pwsh
-      run: |
-        $certArg = ""
-        if ($env:PFX_PATH -and (Test-Path $env:PFX_PATH)) {
-          Write-Host "Signing enabled."
-          $certArg = "/p:PackageCertificateKeyFile=$env:PFX_PATH /p:PackageCertificatePassword=$env:PFX_KEY"
-        } else {
-          Write-Host "No PFX provided — building unsigned MSIX."
-        }
-        msbuild "$env:WAP_PATH" `
-          /p:Configuration=${{ matrix.configuration }} `
-          /p:UapAppxPackageBuildMode=StoreUpload `
-          /p:AppxBundle=Always `
-          /p:AppxBundlePlatforms="x86|x64" `
-          $certArg
-
-    - name: Cleanup PFX
-      if: always() && env.PFX_PATH != ''
-      shell: pwsh
-      run: |
-        if (Test-Path $env:PFX_PATH) { Remove-Item $env:PFX_PATH -Force }
-
-    - name: Upload MSIX artifacts
-      if: env.HAS_WAP == 'true'
+    # ---------------------------------------
+    # ARTIFACT UPLOAD
+    # ---------------------------------------
+    - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: MSIX Package (${{ matrix.configuration }})
-        path: ${{ env.APP_PACKAGES_DIR }}
-
-    # ----------- Non-MSIX path (if no WAP) -----------
-    - name: Publish desktop app (no MSIX)
-      if: env.HAS_WAP != 'true'
-      run: dotnet publish "$env:APP_CSPROJ" -c ${{ matrix.configuration }} -o out/${{ matrix.configuration }}
-
-    - name: Upload published binaries (no MSIX)
-      if: env.HAS_WAP != 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: App Binaries (${{ matrix.configuration }})
-        path: out/${{ matrix.configuration }}
+        name: BuildOutput
+        path: ${{ env.Project_Directory }}\bin\${{ env.Configuration }}\
