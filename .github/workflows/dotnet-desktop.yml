@@ -44,6 +44,10 @@ on:
   pull_request:
     branches: [ "main", "master" ]
 
+# Give GitHub Actions write access for tagging and releases
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -52,7 +56,7 @@ jobs:
       Solution_Name: ironmanx-04-2.sln
       Project_File: ironmanx-04-2\ironmanx-04-2.csproj
       Project_Directory: ironmanx-04-2
-      Configuration: Release          # <-- set to Release when you want to publish
+      Configuration: Release          # Change to Debug if testing
       Platform: x86
 
     steps:
@@ -76,12 +80,7 @@ jobs:
             Write-Host "No solution or project found to restore."
           }
 
-      # ----------------------------------------------------------------------
-      # BEST PRACTICE: Include CrystalDecisions DLLs in repo and reference them
-      # (lib/CrystalReports/*) via HintPath in the .csproj
-      # ----------------------------------------------------------------------
-
-      - name: Build
+      - name: Build solution
         shell: pwsh
         run: |
           if (Test-Path $env:Solution_Name) {
@@ -96,10 +95,7 @@ jobs:
           name: BuildOutput
           path: ${{ env.Project_Directory }}\bin\${{ env.Platform }}\${{ env.Configuration }}\
 
-      # ---------------------------------------
-      # Version extraction (optional improvement)
-      # Tries AssemblyInformationalVersion, then AssemblyVersion; falls back to run_number
-      # ---------------------------------------
+      # Extract version number from AssemblyInfo.cs
       - name: Get version
         id: get_version
         shell: pwsh
@@ -119,15 +115,13 @@ jobs:
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "Using version: $version"
 
-      # ---------------------------------------
-      # Zip assets for release (optional improvement)
-      # ---------------------------------------
+      # Package build into ZIP
       - name: Package artifacts into ZIP
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && env.Configuration == 'Release'
         shell: pwsh
         run: |
           $outDir = Join-Path $env:Project_Directory "bin\$env:Platform\$env:Configuration"
-          $zipPath = Join-Path $env:Project_Directory "bin\$env:Platform\$env:Configuration\ironmanx-04-2_${{ steps.get_version.outputs.version }}.zip"
+          $zipPath = Join-Path $outDir "ironmanx-04-2_${{ steps.get_version.outputs.version }}.zip"
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
           if (Test-Path $outDir) {
             Compress-Archive -Path (Join-Path $outDir '*') -DestinationPath $zipPath
@@ -137,9 +131,7 @@ jobs:
             Write-Host "Output directory not found: $outDir"
           }
 
-      # ---------------------------------------
-      # Create GitHub Release (only on main/master AND Release config)
-      # ---------------------------------------
+      # Create GitHub Release automatically
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v2
@@ -148,25 +140,20 @@ jobs:
           tag_name: v${{ steps.get_version.outputs.version }}
           name: "Release v${{ steps.get_version.outputs.version }}"
           body: |
-            🚀 Automated release from GitHub Actions
-            Commit: ${{ github.sha }}
-            Configuration: ${{ env.Configuration }}
+            🚀 Automated release from GitHub Actions  
+            Commit: ${{ github.sha }}  
+            Configuration: ${{ env.Configuration }}  
             Platform: ${{ env.Platform }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ---------------------------------------
-      # Upload Release Assets (EXE + ZIP)
-      # ---------------------------------------
+      # Upload build outputs to the release
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         if: steps.create_release.outputs.upload_url != ''
         with:
           files: |
             ${{ env.Project_Directory }}\bin\${{ env.Platform }}\${{ env.Configuration }}\*.exe
-            ${{ env.Project_Directory }}\bin\${{ env.Platform }}\${{ env.Configuration }}\*.msi
-            ${{ env.Project_Directory }}\bin\${{ env.Platform }}\${{ env.Configuration }}\*.msix
-            ${{ env.Project_Directory }}\bin\${{ env.Platform }}\${{ env.Configuration }}\*.appxbundle
             ${{ env.Project_Directory }}\bin\${{ env.Platform }}\${{ env.Configuration }}\*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
