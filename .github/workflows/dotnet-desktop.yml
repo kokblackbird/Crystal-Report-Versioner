@@ -40,9 +40,9 @@ name: .NET Desktop Build
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
 
 jobs:
   build:
@@ -50,48 +50,62 @@ jobs:
 
     env:
       Solution_Name: ironmanx-04-2.sln
+      Project_File: ironmanx-04-2\ironmanx-04-2.csproj
       Project_Directory: ironmanx-04-2
       Configuration: Debug
-      Wap_Project_Directory: ironmanx-04-2.Package
+      Platform: x86
       Certificate_Path: GitHubActionsWorkflow.pfx
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v2
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
 
-    - name: Setup NuGet
-      uses: NuGet/setup-nuget@v2
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
 
-    - name: Restore NuGet packages
-      run: nuget restore ${{ env.Solution_Name }}
+      - name: Restore NuGet packages
+        shell: pwsh
+        run: |
+          if (Test-Path $env:Solution_Name) {
+            nuget restore $env:Solution_Name
+          } elseif (Test-Path $env:Project_File) {
+            nuget restore $env:Project_File
+          } else {
+            Write-Host "No solution or project found to restore."
+          }
 
-    # ---------------------------------------
-    # BUILD (explicitly x86, matches your project)
-    # ---------------------------------------
-    - name: Build solution
-      run: msbuild "${{ env.Solution_Name }}" /p:Configuration=${{ env.Configuration }} /p:Platform=x86 /m
+      # ----------------------------------------------------------------------
+      # ✅ BEST PRACTICE: Include CrystalDecisions DLLs directly in repo
+      # ----------------------------------------------------------------------
+      # Copy these locally from your dev machine:
+      #   CrystalDecisions.CrystalReports.Engine.dll
+      #   CrystalDecisions.ReportSource.dll
+      #   CrystalDecisions.Shared.dll
+      #   SAPBusinessObjects.WPF.Viewer.dll
+      #   SAPBusinessObjects.WPF.ViewerShared.dll
+      # Place them in: ironmanx-04-2/lib/CrystalReports/
+      # Update your .csproj to reference them (see my XML snippet).
+      # ----------------------------------------------------------------------
 
-    # ---------------------------------------
-    # PACKAGE (optional)
-    # ---------------------------------------
-    - name: Build app package
-      if: ${{ env.Wap_Project_Directory != '' }}
-      run: |
-        $projectPath = Join-Path $env:Wap_Project_Directory "$($env.Project_Directory).wapproj"
-        if (Test-Path $projectPath) {
-          msbuild $projectPath /p:Configuration=${{ env.Configuration }} /p:Platform=x86 /p:UapAppxPackageBuildMode=StoreUpload /p:AppxBundle=Always /m
-        } else {
-          Write-Host "No .wapproj file found, skipping package build."
-        }
+      - name: Build
+        shell: pwsh
+        run: |
+          if (Test-Path $env:Solution_Name) {
+            msbuild $env:Solution_Name /p:Configuration=$env:Configuration /p:Platform=$env:Platform /m
+          } else {
+            msbuild $env:Project_File /p:Configuration=$env:Configuration /p:Platform=$env:Platform /m
+          }
 
-    # ---------------------------------------
-    # ARTIFACT UPLOAD
-    # ---------------------------------------
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: BuildOutput
-        path: ${{ env.Project_Directory }}\bin\${{ env.Configuration }}\
+      # Optional packaging for WAP projects, if present
+      - name: Build app package (optional)
+        if: false
+        run: echo "No WAP project configured. Skipping."
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: BuildOutput
+          path: ${{ env.Project_Directory }}\bin\${{ env.Platform }}\${{ env.Configuration }}\
